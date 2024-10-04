@@ -1,18 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 
 const Chat = ({ socket, roomId }) => {
   const [message, setMessage] = useState('');
   const [chatLog, setChatLog] = useState([]);
 
-  const sendMessage = () => {
-    socket.emit('chat-message', { roomId, message });
-    setMessage('');
-  };
+  useEffect(() => {
+    socket.on('chat-message', (message) => {
+      setChatLog((prevLog) => [...prevLog, message]);
+    });
 
-  socket.on('chat-message', (msg) => {
-    setChatLog((prev) => [...prev, msg]);
-  });
+    return () => {
+      socket.off('chat-message');
+    };
+  }, [socket]);
+
+  const sendMessage = () => {
+    if (message.trim() !== '') {
+      socket.emit('chat-message', { roomId, message });
+      setChatLog((prevLog) => [...prevLog, `You: ${message}`]);
+      setMessage('');
+    }
+  };
 
   return (
     <div>
@@ -26,13 +35,13 @@ const Chat = ({ socket, roomId }) => {
         type="text"
         value={message}
         onChange={(e) => setMessage(e.target.value)}
+        placeholder="Type a message"
       />
       <button onClick={sendMessage}>Send</button>
     </div>
   );
 };
 
-// PropTypes validation
 Chat.propTypes = {
   socket: PropTypes.object.isRequired,
   roomId: PropTypes.string.isRequired,

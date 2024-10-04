@@ -1,33 +1,31 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 
 const ScreenShare = ({ socket, roomId }) => {
   const videoRef = useRef(null);
   const peerConnection = useRef(null);
+  const screenStream = useRef(null);
+  const [isSharing, setIsSharing] = useState(false);
 
   useEffect(() => {
-    // Initialize peer connection
     peerConnection.current = new RTCPeerConnection({
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },  // Public STUN server
-      ]
+        { urls: 'stun:stun.l.google.com:19302' },
+      ],
     });
 
-    // Handle ICE candidates
     peerConnection.current.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit('signal', { roomId, signal: event.candidate });
       }
     };
 
-    // Handle track event when the remote peer sends media
     peerConnection.current.ontrack = (event) => {
       if (videoRef.current) {
         videoRef.current.srcObject = event.streams[0];
       }
     };
 
-    // Listen for signaling data from the other peer
     socket.on('signal', async (data) => {
       if (data.signal.type === 'offer') {
         await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.signal));
@@ -41,40 +39,59 @@ const ScreenShare = ({ socket, roomId }) => {
       }
     });
 
+    // Stop sharing listener
+    socket.on('stop-sharing', () => {
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      setIsSharing(false);
+    });
+
     return () => {
       socket.off('signal');
+      socket.off('stop-sharing');
     };
   }, [socket, roomId]);
 
   const startScreenShare = async () => {
     try {
       const displayMediaOptions = { video: { frameRate: 60 } };
-      const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
-      videoRef.current.srcObject = screenStream;
+      screenStream.current = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+      videoRef.current.srcObject = screenStream.current;
 
-      // Add the screen track to the peer connection
-      const videoTrack = screenStream.getVideoTracks()[0];
-      screenStream.getTracks().forEach(track => peerConnection.current.addTrack(track, screenStream));
+      const videoTrack = screenStream.current.getVideoTracks()[0];
+      screenStream.current.getTracks().forEach((track) => peerConnection.current.addTrack(track, screenStream.current));
 
-      // Create and send an offer to the other peer
       const offer = await peerConnection.current.createOffer();
       await peerConnection.current.setLocalDescription(offer);
       socket.emit('signal', { roomId, signal: offer });
+      setIsSharing(true);
     } catch (err) {
       console.error('Error sharing screen:', err);
     }
+  };
+
+  const stopScreenShare = () => {
+    const tracks = screenStream.current.getTracks();
+    tracks.forEach((track) => track.stop());
+    videoRef.current.srcObject = null;
+    socket.emit('stop-sharing', roomId);
+    setIsSharing(false);
   };
 
   return (
     <div>
       <h2>Screen Sharing</h2>
       <video ref={videoRef} autoPlay playsInline style={{ width: '80%' }} />
-      <button onClick={startScreenShare}>Start Screen Share</button>
+      {!isSharing ? (
+        <button onClick={startScreenShare}>Start Screen Share</button>
+      ) : (
+        <button onClick={stopScreenShare}>Stop Screen Share</button>
+      )}
     </div>
   );
 };
 
-// PropTypes validation
 ScreenShare.propTypes = {
   socket: PropTypes.object.isRequired,
   roomId: PropTypes.string.isRequired,
