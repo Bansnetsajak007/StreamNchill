@@ -6,7 +6,7 @@ const ScreenShare = ({ socket, roomId }) => {
   const peerConnection = useRef(null);
   const screenStream = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
-  const audioContext = useRef(new (window.AudioContext || window.webkitAudioContext)());
+  const audioContext = useRef(null);
 
   useEffect(() => {
     peerConnection.current = new RTCPeerConnection({
@@ -55,25 +55,54 @@ const ScreenShare = ({ socket, roomId }) => {
     try {
       const displayMediaOptions = {
         video: { frameRate: { ideal: 60 } },
-        audio: true, // Request audio along with video
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       };
 
       screenStream.current = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
       videoRef.current.srcObject = screenStream.current;
+
+      // Initialize AudioContext
+      audioContext.current = new (window.AudioContext || window.webkitAudioContext)();
 
       // Process audio tracks
       const audioTracks = screenStream.current.getAudioTracks();
       audioTracks.forEach((track) => {
         const mediaStreamSource = audioContext.current.createMediaStreamSource(new MediaStream([track]));
 
-        // Create GainNode to control audio volume
+        // Create a GainNode to control audio volume
         const gainNode = audioContext.current.createGain();
-        gainNode.gain.value = 0.8; // Set gain value to reduce volume if needed
-        mediaStreamSource.connect(gainNode);
-        gainNode.connect(audioContext.current.destination); // Connect to speakers
+        gainNode.gain.value = 0.8; // Reduce volume slightly
 
-        // Add the processed track to the peer connection
-        peerConnection.current.addTrack(track, screenStream.current);
+        // Create a BiquadFilterNode for noise reduction
+        const noiseFilter = audioContext.current.createBiquadFilter();
+        noiseFilter.type = 'highpass';
+        noiseFilter.frequency.value = 100; // Adjust as needed
+
+        // Create a DynamicsCompressorNode for better audio balance
+        const compressor = audioContext.current.createDynamicsCompressor();
+        compressor.threshold.value = -50;
+        compressor.knee.value = 40;
+        compressor.ratio.value = 12;
+        compressor.attack.value = 0;
+        compressor.release.value = 0.25;
+
+        // Connect nodes
+        mediaStreamSource.connect(noiseFilter);
+        noiseFilter.connect(gainNode);
+        gainNode.connect(compressor);
+        compressor.connect(audioContext.current.destination);
+
+        // Create a new MediaStreamDestination to capture the processed audio
+        const processedAudioDestination = audioContext.current.createMediaStreamDestination();
+        compressor.connect(processedAudioDestination);
+
+        // Add the processed audio track to the peer connection
+        const processedAudioTrack = processedAudioDestination.stream.getAudioTracks()[0];
+        peerConnection.current.addTrack(processedAudioTrack, screenStream.current);
       });
 
       // Add video tracks to the peer connection
@@ -91,9 +120,16 @@ const ScreenShare = ({ socket, roomId }) => {
   };
 
   const stopScreenShare = () => {
-    const tracks = screenStream.current.getTracks();
-    tracks.forEach((track) => track.stop());
-    videoRef.current.srcObject = null;
+    if (screenStream.current) {
+      const tracks = screenStream.current.getTracks();
+      tracks.forEach((track) => track.stop());
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    if (audioContext.current) {
+      audioContext.current.close();
+    }
     socket.emit('stop-sharing', roomId);
     setIsSharing(false);
   };
