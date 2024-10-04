@@ -7,8 +7,16 @@ const ScreenShare = ({ socket, roomId }) => {
   const screenStream = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
   const audioContext = useRef(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
+    // Check if the device is mobile
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+      return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
+    };
+    setIsMobile(checkMobile());
+
     peerConnection.current = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
@@ -53,14 +61,26 @@ const ScreenShare = ({ socket, roomId }) => {
 
   const startScreenShare = async () => {
     try {
-      const displayMediaOptions = {
-        video: { frameRate: { ideal: 60 } },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      };
+      let displayMediaOptions;
+      if (isMobile) {
+        displayMediaOptions = {
+          video: {
+            displaySurface: 'browser',
+          },
+          audio: true,
+          selfBrowserSurface: 'include',
+          systemAudio: 'include',
+        };
+      } else {
+        displayMediaOptions = {
+          video: { frameRate: { ideal: 60 } },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        };
+      }
 
       screenStream.current = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
       videoRef.current.srcObject = screenStream.current;
