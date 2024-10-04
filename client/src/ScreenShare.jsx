@@ -6,30 +6,25 @@ const ScreenShare = ({ socket, roomId }) => {
   const peerConnection = useRef(null);
   const screenStream = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
+  const audioContext = useRef(new (window.AudioContext || window.webkitAudioContext)());
 
   useEffect(() => {
-    // Create RTCPeerConnection
     peerConnection.current = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-      ],
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
 
-    // Handle ICE candidates
     peerConnection.current.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit('signal', { roomId, signal: event.candidate });
       }
     };
 
-    // Handle incoming tracks
     peerConnection.current.ontrack = (event) => {
       if (videoRef.current) {
         videoRef.current.srcObject = event.streams[0];
       }
     };
 
-    // Signal handling from socket
     socket.on('signal', async (data) => {
       if (data.signal.type === 'offer') {
         await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.signal));
@@ -43,7 +38,6 @@ const ScreenShare = ({ socket, roomId }) => {
       }
     });
 
-    // Stop sharing listener
     socket.on('stop-sharing', () => {
       if (videoRef.current) {
         videoRef.current.srcObject = null;
@@ -57,40 +51,36 @@ const ScreenShare = ({ socket, roomId }) => {
     };
   }, [socket, roomId]);
 
-  // Function to start screen sharing
   const startScreenShare = async () => {
     try {
       const displayMediaOptions = {
         video: { frameRate: { ideal: 60 } },
-        audio: {
-          echoCancellation: { ideal: true },
-          noiseSuppression: { ideal: true },
-          sampleRate: 48000,
-          channelCount: 1,
-        },
+        audio: true, // Request audio along with video
       };
-  
+
       screenStream.current = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
       videoRef.current.srcObject = screenStream.current;
-  
-      // Set up audio processing
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Process audio tracks
       const audioTracks = screenStream.current.getAudioTracks();
-  
       audioTracks.forEach((track) => {
-        const mediaStreamSource = audioContext.createMediaStreamSource(new MediaStream([track]));
-        const gainNode = audioContext.createGain();
-  
-        gainNode.gain.value = 1; // Adjust gain level if necessary
+        const mediaStreamSource = audioContext.current.createMediaStreamSource(new MediaStream([track]));
+
+        // Create GainNode to control audio volume
+        const gainNode = audioContext.current.createGain();
+        gainNode.gain.value = 0.8; // Set gain value to reduce volume if needed
         mediaStreamSource.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-      });
-  
-      // Add video and audio tracks to the peer connection
-      screenStream.current.getTracks().forEach((track) => {
+        gainNode.connect(audioContext.current.destination); // Connect to speakers
+
+        // Add the processed track to the peer connection
         peerConnection.current.addTrack(track, screenStream.current);
       });
-  
+
+      // Add video tracks to the peer connection
+      screenStream.current.getVideoTracks().forEach((track) => {
+        peerConnection.current.addTrack(track, screenStream.current);
+      });
+
       const offer = await peerConnection.current.createOffer();
       await peerConnection.current.setLocalDescription(offer);
       socket.emit('signal', { roomId, signal: offer });
@@ -99,8 +89,7 @@ const ScreenShare = ({ socket, roomId }) => {
       console.error('Error sharing screen:', err);
     }
   };
-  
-  // Function to stop screen sharing
+
   const stopScreenShare = () => {
     const tracks = screenStream.current.getTracks();
     tracks.forEach((track) => track.stop());
