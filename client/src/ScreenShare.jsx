@@ -60,24 +60,37 @@ const ScreenShare = ({ socket, roomId }) => {
   // Function to start screen sharing
   const startScreenShare = async () => {
     try {
-      // Request display media with improved audio capture settings
       const displayMediaOptions = {
         video: { frameRate: { ideal: 60 } },
         audio: {
-          echoCancellation: true, // Reduce echo
-          noiseSuppression: true, // Reduce background noise
-          autoGainControl: true,  // Adjust gain automatically
+          echoCancellation: { ideal: true },
+          noiseSuppression: { ideal: true },
+          sampleRate: 48000,
+          channelCount: 1,
         },
       };
-
+  
       screenStream.current = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
       videoRef.current.srcObject = screenStream.current;
-
+  
+      // Set up audio processing
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const audioTracks = screenStream.current.getAudioTracks();
+  
+      audioTracks.forEach((track) => {
+        const mediaStreamSource = audioContext.createMediaStreamSource(new MediaStream([track]));
+        const gainNode = audioContext.createGain();
+  
+        gainNode.gain.value = 1; // Adjust gain level if necessary
+        mediaStreamSource.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+      });
+  
       // Add video and audio tracks to the peer connection
       screenStream.current.getTracks().forEach((track) => {
         peerConnection.current.addTrack(track, screenStream.current);
       });
-
+  
       const offer = await peerConnection.current.createOffer();
       await peerConnection.current.setLocalDescription(offer);
       socket.emit('signal', { roomId, signal: offer });
@@ -86,7 +99,7 @@ const ScreenShare = ({ socket, roomId }) => {
       console.error('Error sharing screen:', err);
     }
   };
-
+  
   // Function to stop screen sharing
   const stopScreenShare = () => {
     const tracks = screenStream.current.getTracks();
