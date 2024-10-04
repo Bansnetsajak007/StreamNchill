@@ -60,8 +60,16 @@ const ScreenShare = ({ socket, roomId }) => {
   // Function to start screen sharing
   const startScreenShare = async () => {
     try {
-      // Request display media with audio capture
-      const displayMediaOptions = { video: { frameRate: 60 }, audio: true };
+      // Request display media with improved audio capture settings
+      const displayMediaOptions = {
+        video: { frameRate: { ideal: 60 } },
+        audio: {
+          echoCancellation: true, // Reduce echo
+          noiseSuppression: true, // Reduce background noise
+          autoGainControl: true,  // Adjust gain automatically
+        },
+      };
+
       screenStream.current = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
       videoRef.current.srcObject = screenStream.current;
 
