@@ -5,7 +5,7 @@ import Chat from './Chat';
 import './index.css';
 
 // const socket = io('http://localhost:3001');
-const socket = io('https://streamnchillv1.onrender.com');
+const socket = io('https://streamnchill.onrender.com');
 
 const App = () => {
   const [roomId, setRoomId] = useState('');
