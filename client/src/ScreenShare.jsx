@@ -8,24 +8,28 @@ const ScreenShare = ({ socket, roomId }) => {
   const [isSharing, setIsSharing] = useState(false);
 
   useEffect(() => {
+    // Create RTCPeerConnection
     peerConnection.current = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
       ],
     });
 
+    // Handle ICE candidates
     peerConnection.current.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit('signal', { roomId, signal: event.candidate });
       }
     };
 
+    // Handle incoming tracks
     peerConnection.current.ontrack = (event) => {
       if (videoRef.current) {
         videoRef.current.srcObject = event.streams[0];
       }
     };
 
+    // Signal handling from socket
     socket.on('signal', async (data) => {
       if (data.signal.type === 'offer') {
         await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.signal));
@@ -53,14 +57,18 @@ const ScreenShare = ({ socket, roomId }) => {
     };
   }, [socket, roomId]);
 
+  // Function to start screen sharing
   const startScreenShare = async () => {
     try {
-      const displayMediaOptions = { video: { frameRate: 60 } };
+      // Request display media with audio capture
+      const displayMediaOptions = { video: { frameRate: 60 }, audio: true };
       screenStream.current = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
       videoRef.current.srcObject = screenStream.current;
 
-      const videoTrack = screenStream.current.getVideoTracks()[0];
-      screenStream.current.getTracks().forEach((track) => peerConnection.current.addTrack(track, screenStream.current));
+      // Add video and audio tracks to the peer connection
+      screenStream.current.getTracks().forEach((track) => {
+        peerConnection.current.addTrack(track, screenStream.current);
+      });
 
       const offer = await peerConnection.current.createOffer();
       await peerConnection.current.setLocalDescription(offer);
@@ -71,6 +79,7 @@ const ScreenShare = ({ socket, roomId }) => {
     }
   };
 
+  // Function to stop screen sharing
   const stopScreenShare = () => {
     const tracks = screenStream.current.getTracks();
     tracks.forEach((track) => track.stop());
