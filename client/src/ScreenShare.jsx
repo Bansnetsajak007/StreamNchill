@@ -7,16 +7,8 @@ const ScreenShare = ({ socket, roomId }) => {
   const screenStream = useRef(null);
   const [isSharing, setIsSharing] = useState(false);
   const audioContext = useRef(null);
-  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    // Check if the device is mobile
-    const checkMobile = () => {
-      const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-      return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
-    };
-    setIsMobile(checkMobile());
-
     peerConnection.current = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
@@ -61,26 +53,18 @@ const ScreenShare = ({ socket, roomId }) => {
 
   const startScreenShare = async () => {
     try {
-      let displayMediaOptions;
-      if (isMobile) {
-        displayMediaOptions = {
-          video: {
-            displaySurface: 'browser',
-          },
-          audio: true,
-          selfBrowserSurface: 'include',
-          systemAudio: 'include',
-        };
-      } else {
-        displayMediaOptions = {
-          video: { frameRate: { ideal: 60 } },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        };
-      }
+      const displayMediaOptions = {
+        video: {
+          displaySurface: 'monitor',
+          logicalSurface: true,
+          cursor: 'always',
+          frameRate: 30,
+        },
+        audio: true,
+        surfaceSwitching: 'include',
+        systemAudio: 'include',
+        selfBrowserSurface: 'include',
+      };
 
       screenStream.current = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
       videoRef.current.srcObject = screenStream.current;
@@ -92,33 +76,8 @@ const ScreenShare = ({ socket, roomId }) => {
       const audioTracks = screenStream.current.getAudioTracks();
       audioTracks.forEach((track) => {
         const mediaStreamSource = audioContext.current.createMediaStreamSource(new MediaStream([track]));
-
-        // Create a GainNode to control audio volume
-        const gainNode = audioContext.current.createGain();
-        gainNode.gain.value = 0.8; // Reduce volume slightly
-
-        // Create a BiquadFilterNode for noise reduction
-        const noiseFilter = audioContext.current.createBiquadFilter();
-        noiseFilter.type = 'highpass';
-        noiseFilter.frequency.value = 100; // Adjust as needed
-
-        // Create a DynamicsCompressorNode for better audio balance
-        const compressor = audioContext.current.createDynamicsCompressor();
-        compressor.threshold.value = -50;
-        compressor.knee.value = 40;
-        compressor.ratio.value = 12;
-        compressor.attack.value = 0;
-        compressor.release.value = 0.25;
-
-        // Connect nodes
-        mediaStreamSource.connect(noiseFilter);
-        noiseFilter.connect(gainNode);
-        gainNode.connect(compressor);
-        compressor.connect(audioContext.current.destination);
-
-        // Create a new MediaStreamDestination to capture the processed audio
         const processedAudioDestination = audioContext.current.createMediaStreamDestination();
-        compressor.connect(processedAudioDestination);
+        mediaStreamSource.connect(processedAudioDestination);
 
         // Add the processed audio track to the peer connection
         const processedAudioTrack = processedAudioDestination.stream.getAudioTracks()[0];
