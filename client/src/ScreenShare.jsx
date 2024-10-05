@@ -5,8 +5,9 @@ const ScreenShare = ({ socket, roomId }) => {
   const videoRef = useRef(null);
   const peerConnection = useRef(null);
   const screenStream = useRef(null);
-  const [isSharing, setIsSharing] = useState(false);
   const audioContext = useRef(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   useEffect(() => {
     peerConnection.current = new RTCPeerConnection({
@@ -113,6 +114,32 @@ const ScreenShare = ({ socket, roomId }) => {
     setIsSharing(false);
   };
 
+  // Fullscreen toggle function
+  const toggleFullScreen = () => {
+    if (!isFullScreen) {
+      if (videoRef.current.requestFullscreen) {
+        videoRef.current.requestFullscreen();
+      } else if (videoRef.current.mozRequestFullScreen) {
+        videoRef.current.mozRequestFullScreen(); // Firefox
+      } else if (videoRef.current.webkitRequestFullscreen) {
+        videoRef.current.webkitRequestFullscreen(); // Chrome, Safari, Opera
+      } else if (videoRef.current.msRequestFullscreen) {
+        videoRef.current.msRequestFullscreen(); // IE/Edge
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen(); // Firefox
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen(); // Chrome, Safari, Opera
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen(); // IE/Edge
+      }
+    }
+    setIsFullScreen(!isFullScreen);
+  };
+
   return (
     <div>
       <h2>Screen Sharing</h2>
@@ -122,6 +149,15 @@ const ScreenShare = ({ socket, roomId }) => {
       ) : (
         <button onClick={stopScreenShare}>Stop Screen Share</button>
       )}
+
+      {/* Full-Screen Button */}
+      <button onClick={toggleFullScreen}>
+        {isFullScreen ? 'Exit Full Screen' : 'Full Screen'}
+      </button>
+
+      {/* Optional: Add Zoom functionality */}
+      <button onClick={() => (videoRef.current.style.transform = 'scale(1.5)')}>Zoom In</button>
+      <button onClick={() => (videoRef.current.style.transform = 'scale(1)')}>Reset Zoom</button>
     </div>
   );
 };
